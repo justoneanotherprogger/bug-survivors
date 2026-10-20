@@ -1,216 +1,31 @@
 'use strict';
-/* ================= CORE ================= */
-const $ = id => document.getElementById(id);
-const TAU = Math.PI * 2;
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const lerp = (a, b, t) => a + (b - a) * t;
-const rnd = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
-const ri = (a, b) => Math.floor(rnd(a, b + 1));
-const pick = a => a[Math.floor(Math.random() * a.length)];
-const dist2 = (ax, ay, bx, by) => {
-  const dx = ax - bx,
-    dy = ay - by;
-  return dx * dx + dy * dy;
-};
-function fmt(n) {
-  n = Math.floor(n);
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (n >= 1e4) return (n / 1e3).toFixed(1) + 'K';
-  return '' + n;
-}
-function fmtT(s) {
-  s = Math.max(0, Math.floor(s));
-  const m = Math.floor(s / 60);
-  return (m < 10 ? '0' : '') + m + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
-}
 
-/* ================= SAVE ================= */
-const SAVE_KEY = 'bugSurvivors_v1';
-function DEFSAVE() {
-  return {
-    coins: 0,
-    lastChar: 'punch',
-    meta: {
-      power: 0,
-      armor: 0,
-      hp: 0,
-      cd: 0,
-      area: 0,
-      mspd: 0,
-      amount: 0,
-      luck: 0,
-      growth: 0,
-      greed: 0,
-      regen: 0,
-      revive: 0,
-      wslot: 0,
-      pslot: 0,
-      minimap: 0,
-      codex: 0,
-      dinf: 0,
-      cinf: 0,
-      td: 0,
-      hpinf: 0,
-      buginf: 0,
-    },
-    chars: { punch: true },
-    stages: { prod: true },
-    ach: {},
-    stats: {
-      kills: 0,
-      coins: 0,
-      xp: 0,
-      bosses: 0,
-      runs: 0,
-      wins: 0,
-      evos: 0,
-      hypers: 0,
-      maxlvl: 0,
-      deaths: 0,
-      bestLvl: 0,
-      bestKills: 0,
-      bestAny: 0,
-      winsBy: { prod: 0, night: 0, legacy: 0 },
-      best: { prod: 0, night: 0, legacy: 0 },
-      bestBy: {},
-      maxLvlBy: {},
-      evoBy: {},
-    },
-    set: { sfx: true, shake: true, automod: false },
-  };
-}
-function mergeInto(d, s) {
-  for (const k in s) {
-    if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k])) {
-      if (!d[k] || typeof d[k] !== 'object') d[k] = {};
-      mergeInto(d[k], s[k]);
-    } else d[k] = s[k];
-  }
-}
-function loadSave() {
-  const d = DEFSAVE();
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) mergeInto(d, JSON.parse(raw));
-  } catch (e) {}
-  if (d.ach && d.ach.p_cd) d.ach.p_armor = true;
-  /* миграция: РАЗОГРЕВ стал ЗАКАЛКОЙ (p_cd→p_armor) */ return d;
-}
-let save = loadSave();
-function saveGame() {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  } catch (e) {}
-}
+import { $, TAU, clamp, lerp, rnd, ri, pick, dist2, fmt, fmtT } from './core/utils.js';
+import { SAVE_KEY, save, saveGame, reloadSave } from './core/save.js';
+import {
+  P,
+  run,
+  enemies,
+  bullets,
+  gems,
+  pickups,
+  pools,
+  fx,
+  parts,
+  dmgNums,
+  notes,
+  cam,
+  CAP_ENEMIES,
+} from './core/state.js';
+import { sfx } from './core/audio.js';
+import { keys, joy, inputDir } from './core/input.js';
 
 /* ================= STATE ================= */
 let appState = 'menu'; // menu|chars|stages|shop|ach|stats|settings|run|pause|levelup|chest|over
 let hasRun = false;
-let P = null,
-  run = null;
-let enemies = [],
-  bullets = [],
-  gems = [],
-  pickups = [],
-  pools = [],
-  fx = [],
-  parts = [],
-  dmgNums = [],
-  notes = [];
-let cam = { x: 0, y: 0 },
-  shake = 0,
+let shake = 0,
   uidC = 1;
 let hudTxtT = 0;
-const CAP_ENEMIES = 320;
-
-/* ================= AUDIO ================= */
-let AC = null;
-const lastSfx = {};
-function ac() {
-  if (!AC) {
-    try {
-      AC = new (window.AudioContext || window.webkitAudioContext)();
-    } catch (e) {}
-  }
-  return AC;
-}
-window.addEventListener(
-  'pointerdown',
-  () => {
-    const a = ac();
-    if (a && a.state === 'suspended') a.resume();
-  },
-  { passive: true }
-);
-function tone(f0, f1, dur, type, vol, delay = 0) {
-  const a = ac();
-  if (!a) return;
-  try {
-    const t0 = a.currentTime + delay;
-    const o = a.createOscillator(),
-      g = a.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(Math.max(20, f0), t0);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
-    g.gain.setValueAtTime(vol, t0);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(a.destination);
-    o.start(t0);
-    o.stop(t0 + dur + 0.02);
-  } catch (e) {}
-}
-function sfx(n) {
-  if (!save.set.sfx || !AC) return;
-  const now = performance.now();
-  const th = { shoot: 70, hit: 60, gem: 55, kill: 70, coin: 80 }[n] || 0;
-  if (th && now - (lastSfx[n] || 0) < th) return;
-  lastSfx[n] = now;
-  switch (n) {
-    case 'shoot':
-      tone(300, 200, 0.05, 'square', 0.04);
-      break;
-    case 'hit':
-      tone(180, 90, 0.06, 'triangle', 0.07);
-      break;
-    case 'kill':
-      tone(320, 60, 0.12, 'square', 0.08);
-      break;
-    case 'gem':
-      tone(720, 980, 0.06, 'sine', 0.045);
-      break;
-    case 'coin':
-      tone(880, 1500, 0.1, 'sine', 0.07);
-      break;
-    case 'heal':
-      tone(500, 900, 0.15, 'sine', 0.09);
-      break;
-    case 'hurt':
-      tone(220, 55, 0.22, 'sawtooth', 0.15);
-      break;
-    case 'lvl':
-      [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.12, 'square', 0.06, i * 0.07));
-      break;
-    case 'chest':
-      [392, 523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.14, 'square', 0.06, i * 0.08));
-      break;
-    case 'evo':
-      [261, 329, 392, 523, 659, 784].forEach((f, i) => tone(f, f, 0.16, 'sawtooth', 0.045, i * 0.06));
-      break;
-    case 'boss':
-      tone(90, 38, 0.7, 'sawtooth', 0.18);
-      break;
-    case 'click':
-      tone(640, 520, 0.045, 'square', 0.045);
-      break;
-    case 'boom':
-      tone(120, 30, 0.35, 'sawtooth', 0.18);
-      break;
-    case 'pick':
-      tone(500, 700, 0.05, 'sine', 0.05);
-      break;
-  }
-}
 
 /* ================= TOAST ================= */
 function toast(msg, cls = '') {
@@ -225,7 +40,6 @@ function toast(msg, cls = '') {
 }
 
 /* ================= INPUT ================= */
-const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.repeat) return;
@@ -256,7 +70,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* virtual joystick (touch) */
-const joy = { on: false, id: null, bx: 0, by: 0, dx: 0, dy: 0 };
 const joyEl = $('joy'),
   joyKnob = $('joyKnob');
 window.addEventListener(
@@ -306,25 +119,6 @@ function joyEnd(e) {
 }
 window.addEventListener('pointerup', joyEnd, { passive: true });
 window.addEventListener('pointercancel', joyEnd, { passive: true });
-
-function inputDir() {
-  let x = 0,
-    y = 0;
-  if (keys.KeyA || keys.ArrowLeft) x -= 1;
-  if (keys.KeyD || keys.ArrowRight) x += 1;
-  if (keys.KeyW || keys.ArrowUp) y -= 1;
-  if (keys.KeyS || keys.ArrowDown) y += 1;
-  if (joy.on) {
-    x += joy.dx;
-    y += joy.dy;
-  }
-  const d = Math.hypot(x, y);
-  if (d > 1) {
-    x /= d;
-    y /= d;
-  }
-  return { x, y };
-}
 
 /* ================= CONTENT DATA ================= */
 const CHARS = [
@@ -1501,16 +1295,16 @@ function xpNeed(l) {
 function startRun(charId, stageId, endless) {
   const ch = CHARS.find(c => c.id === charId);
   const st = STAGES.find(s => s.id === stageId);
-  enemies = [];
-  bullets = [];
-  gems = [];
-  pickups = [];
-  pools = [];
-  fx = [];
-  parts = [];
-  dmgNums = [];
-  notes = [];
-  P = {
+  enemies.length = 0;
+  bullets.length = 0;
+  gems.length = 0;
+  pickups.length = 0;
+  pools.length = 0;
+  fx.length = 0;
+  parts.length = 0;
+  dmgNums.length = 0;
+  notes.length = 0;
+  Object.assign(P, {
     x: 0,
     y: 0,
     r: 13,
@@ -1541,8 +1335,8 @@ function startRun(charId, stageId, endless) {
     revive: 0,
     wCap: 6,
     pCap: 6,
-  };
-  run = {
+  });
+  Object.assign(run, {
     charId,
     stageId,
     endless: !!endless,
@@ -1560,7 +1354,7 @@ function startRun(charId, stageId, endless) {
     bossPlan: [300, 600, 900, 1200, 1500, 1740].map((t, i) => ({ t, tier: i + 1 })),
     boss: null,
     waves: makeWaves(st),
-  };
+  });
   recompute();
   P.hp = P.maxhp;
   if (ch.weapon) P.weapons.push({ id: ch.weapon, lvl: 1, timer: 0.3, active: false, pend: null });
@@ -7190,7 +6984,7 @@ $('resetBtn').onclick = () => {
     return;
   }
   localStorage.removeItem(SAVE_KEY);
-  save = loadSave();
+  reloadSave();
   resetArmed = false;
   $('resetBtn').textContent = 'СБРОСИТЬ ВЕСЬ ПРОГРЕСС';
   /* полный сброс = немедленная перезагрузка: галочки и экраны биндятся один
