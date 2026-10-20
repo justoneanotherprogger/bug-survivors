@@ -3,6 +3,7 @@
 import { $, TAU, clamp, lerp, rnd, ri, pick, dist2, fmt, fmtT } from './core/utils.js';
 import { SAVE_KEY, save, saveGame, reloadSave } from './core/save.js';
 import {
+  S,
   P,
   run,
   enemies,
@@ -21,11 +22,6 @@ import { sfx } from './core/audio.js';
 import { keys, joy, inputDir } from './core/input.js';
 
 /* ================= STATE ================= */
-let appState = 'menu'; // menu|chars|stages|shop|ach|stats|settings|run|pause|levelup|chest|over
-let hasRun = false;
-let shake = 0,
-  uidC = 1;
-let hudTxtT = 0;
 
 /* ================= TOAST ================= */
 function toast(msg, cls = '') {
@@ -43,14 +39,14 @@ function toast(msg, cls = '') {
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.repeat) return;
-  if (appState === 'run' && (e.code === 'Escape' || e.code === 'KeyP')) pauseGame();
-  else if (appState === 'pause' && (e.code === 'Escape' || e.code === 'KeyP')) resumeGame();
-  else if (appState === 'chest' && e.code === 'Space') {
+  if (S.appState === 'run' && (e.code === 'Escape' || e.code === 'KeyP')) pauseGame();
+  else if (S.appState === 'pause' && (e.code === 'Escape' || e.code === 'KeyP')) resumeGame();
+  else if (S.appState === 'chest' && e.code === 'Space') {
     if (!chestEvo) {
       e.preventDefault();
       $('chestOk').click();
     }
-  } else if (appState === 'levelup') {
+  } else if (S.appState === 'levelup') {
     const m = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 };
     if (e.code in m) {
       const c = $('lvlCards').children[m[e.code]];
@@ -63,10 +59,10 @@ window.addEventListener('keyup', e => {
 });
 window.addEventListener('blur', () => {
   for (const k in keys) keys[k] = false;
-  if (appState === 'run') pauseGame();
+  if (S.appState === 'run') pauseGame();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && appState === 'run') pauseGame();
+  if (document.hidden && S.appState === 'run') pauseGame();
 });
 
 /* virtual joystick (touch) */
@@ -75,7 +71,7 @@ const joyEl = $('joy'),
 window.addEventListener(
   'pointerdown',
   e => {
-    if (appState !== 'run') return;
+    if (S.appState !== 'run') return;
     if (e.target.closest('button') || e.target.closest('.modal') || e.target.closest('.screen')) return;
     joy.on = true;
     joy.id = e.pointerId;
@@ -1360,9 +1356,9 @@ function startRun(charId, stageId, endless) {
   if (ch.weapon) P.weapons.push({ id: ch.weapon, lvl: 1, timer: 0.3, active: false, pend: null });
   cam.x = 0;
   cam.y = 0;
-  shake = 0;
-  hasRun = true;
-  appState = 'run';
+  S.shake = 0;
+  S.hasRun = true;
+  S.appState = 'run';
   hideAllScreens();
   $('hud').classList.remove('hidden');
   buildIcons();
@@ -1393,8 +1389,8 @@ function showHint(txt, ms) {
   h.classList.add('on');
 }
 function endRun(win, quit) {
-  if (appState === 'over') return;
-  appState = 'over';
+  if (S.appState === 'over') return;
+  S.appState = 'over';
   hideTip();
   const greed = 1 + 0.1 * save.meta.greed + 0.01 * save.meta.cinf;
   const earned = run.coins + (win ? 400 : 0);
@@ -1466,8 +1462,8 @@ function goRow(k, v) {
   return '<div class="r"><span>' + k + '</span><span>' + v + '</span></div>';
 }
 function pauseGame() {
-  if (appState !== 'run') return;
-  appState = 'pause';
+  if (S.appState !== 'run') return;
+  S.appState = 'pause';
   hideTip();
   const pb = $('pauseBuild');
   pb.innerHTML = '';
@@ -1486,8 +1482,8 @@ function pauseGame() {
   $('pauseModal').classList.remove('hidden');
 }
 function resumeGame() {
-  if (appState !== 'pause') return;
-  appState = 'run';
+  if (S.appState !== 'pause') return;
+  S.appState = 'run';
   $('pauseModal').classList.add('hidden');
   hideTip();
 }
@@ -1508,18 +1504,18 @@ function gainXP(v) {
   if (leveled) {
     if (P.lvl > save.stats.bestLvl) save.stats.bestLvl = P.lvl;
     sfx('lvl');
-    if (appState === 'run') openLevelup();
+    if (S.appState === 'run') openLevelup();
   }
 }
 let lvlChoices = [];
 function openLevelup() {
-  appState = 'levelup';
+  S.appState = 'levelup';
   lvlChoices = rollChoices();
   /* страховка: пул не может быть пуст (моды есть всегда, когда всё выкачано), но пусть игра не зависнет */
   if (!lvlChoices.length) {
     P.pendLv--;
     if (P.pendLv > 0) openLevelup();
-    else appState = 'run';
+    else S.appState = 'run';
     return;
   }
   const hasMods = lvlChoices.some(c => c.type === 'mod');
@@ -1621,7 +1617,7 @@ function rollChoices() {
   return out;
 }
 function chooseLevel(i) {
-  if (appState !== 'levelup') return;
+  if (S.appState !== 'levelup') return;
   const c = lvlChoices[i];
   if (!c) return;
   if (c.type === 'w') {
@@ -1644,7 +1640,7 @@ function chooseLevel(i) {
   P.pendLv--;
   $('levelup').classList.add('hidden');
   if (P.pendLv > 0) openLevelup();
-  else appState = 'run';
+  else S.appState = 'run';
 }
 
 /* описание того, что даёт уров. TO оружия ID (автодиф уровней) */
@@ -1717,7 +1713,7 @@ function applyEvo(c) {
   buildIcons(); /* ачивки — только на экране окончания забега */
 }
 function openEvoModal(c) {
-  appState = 'chest';
+  S.appState = 'chest';
   chestEvo = c;
   const items = $('chestItems');
   if (c.mode === 'evo') {
@@ -1773,7 +1769,7 @@ function openEvoModal(c) {
   sfx('evo');
 }
 function openChest() {
-  if (appState !== 'run') return;
+  if (S.appState !== 'run') return;
   const c1 = findEvo1(),
     ch = findHyper();
   if (c1) {
@@ -1819,7 +1815,7 @@ function openChest() {
   }
   /* сундук с апгрейдами — окно с описаниями */
   chestEvo = null;
-  appState = 'chest';
+  S.appState = 'chest';
   $('chestTitle').innerHTML = '🎁 СУНДУК';
   const items = $('chestItems');
   items.innerHTML = '';
@@ -1904,7 +1900,7 @@ function spawnEnemy(typeId, x, y, o = {}) {
   const t = ETYPES[typeId];
   if (!t) return null;
   const e = {
-    uid: uidC++,
+    uid: S.uidC++,
     type: typeId,
     x,
     y,
@@ -1938,10 +1934,10 @@ function spawnEnemy(typeId, x, y, o = {}) {
 function spawnBoss(tier) {
   const def = BOSSES[Math.min(tier - 1, BOSSES.length - 1)];
   const a = rnd(TAU),
-    R = Math.hypot(W, H) / 2 + 120;
+    R = Math.hypot(S.W, S.H) / 2 + 120;
   const isFinal = !!def.final;
   const e = {
-    uid: uidC++,
+    uid: S.uidC++,
     type: 'boss',
     boss: true,
     final: isFinal,
@@ -1976,7 +1972,7 @@ function spawnBoss(tier) {
 }
 function ringWave(types) {
   /* «меня окружили, бежать некуда»: игрок всегда в центре экрана, поэтому кольцо
-     входит ПО КРАЯМ ЭКРАНА — дистанция до края в направлении θ = min((W/2)/|cosθ|,(H/2)/|sinθ|)+64
+     входит ПО КРАЯМ ЭКРАНА — дистанция до края в направлении θ = min((S.W/2)/|cosθ|,(S.H/2)/|sinθ|)+64
      (раньше был фикс. полудиагональ+40: на портрете верх/низ появлялись далеко за экраном и
      волна превращалась в хвост-догонялки). Каждому врагу волны даётся surge: 6 секунд
      сокращения с множителем до ×1.8 (спадает линейно) — разрядить кольцо можно только огнём.
@@ -1991,11 +1987,11 @@ function ringWave(types) {
     const a = ((s % SEG) / SEG) * TAU,
       ca = Math.cos(a),
       sa = Math.sin(a);
-    /* расширенный прямоугольник (W+128)×(H+128): края ровно в 64px за экраном.
+    /* расширенный прямоугольник (S.W+128)×(S.H+128): края ровно в 64px за экраном.
        Вариант min(...)+64 (64 вдоль ЛУЧА, а не перпендикуляра) по диагоналям нырял
        внутрь — просветы на изломах сжимались вдвое относительно прямых участков */
-    const tx = ca !== 0 ? (W / 2 + 64) / Math.abs(ca) : 1e9,
-      ty = sa !== 0 ? (H / 2 + 64) / Math.abs(sa) : 1e9;
+    const tx = ca !== 0 ? (S.W / 2 + 64) / Math.abs(ca) : 1e9,
+      ty = sa !== 0 ? (S.H / 2 + 64) / Math.abs(sa) : 1e9;
     const R = Math.min(tx, ty);
     pos[s] = [ca * R, sa * R];
   }
@@ -2036,7 +2032,7 @@ function director(dt) {
     run.spawnT = (w ? w.itv : 0.5) / (threat().cnt * enemyPow());
     /* перебор CAP (в т.ч. после кольца, которое CAP не проверяет) — обычный спавн просто молчит */
     if (enemies.length < Math.round(CAP_ENEMIES * timeSpd() * enemyPow() * Math.min(1.8, threat().cnt)) && w) {
-      const R = Math.hypot(W, H) / 2 + 70;
+      const R = Math.hypot(S.W, S.H) / 2 + 70;
       for (let i = 0; i < w.batch; i++) {
         const a = rnd(TAU);
         spawnEnemy(pick(w.types), P.x + Math.cos(a) * R, P.y + Math.sin(a) * R, { elite: run.eliteNext && i === 0 });
@@ -2058,7 +2054,7 @@ function laserAim(count) {
   const MERGE = 48,
     MINSEP = 104,
     WGT = 240,
-    VW = Math.hypot(W, H) / 2 + 80;
+    VW = Math.hypot(S.W, S.H) / 2 + 80;
   const cand = [];
   for (const axis of ['y', 'x']) {
     const pts = enemies
@@ -2348,7 +2344,7 @@ function updHyper(w, s, dt) {
       if (w.impT <= 0) {
         w.impT = 3.4;
         explosion(P.x, P.y, 175 * s.area, s.dmg * 2.2, true);
-        shake += 8;
+        S.shake += 8;
       }
       break;
     }
@@ -3085,7 +3081,7 @@ function pickThreat(x, y, maxD) {
    Приоритет — не только «описанное» поведение, но и дистанция: близость цели
    входит в вес (далёкий баг — не цель), а радиус поиска не больше видимой зоны */
 function aimFor(prio) {
-  const R = Math.min(560, Math.hypot(W, H) * 0.4),
+  const R = Math.min(560, Math.hypot(S.W, S.H) * 0.4),
     R2 = R * R; /* ~0.8 полудиагонали экрана */
   let best = null,
     bv = 0;
@@ -3116,7 +3112,7 @@ function hurtPlayer(d) {
   const dmg = Math.max(1, Math.round(d - P.armor));
   P.hp -= dmg;
   dmgNum(P.x, P.y - 20, dmg, '#f87171');
-  shake += 3;
+  S.shake += 3;
   sfx('hurt');
   if (P.hp <= 0) {
     if (P.revive > 0) {
@@ -3150,7 +3146,7 @@ function update(dt) {
   director(dt);
   cam.x = P.x;
   cam.y = P.y;
-  shake = Math.max(0, Math.min(shake, 16) - 30 * dt); /* кап: тряска не копится бесконечно */
+  S.shake = Math.max(0, Math.min(S.shake, 16) - 30 * dt); /* кап: тряска не копится бесконечно */
   updateHUD(dt);
 }
 function updateHUD(dt) {
@@ -3159,9 +3155,9 @@ function updateHUD(dt) {
   const hb = $('hpbar');
   hb.style.width = hpr * 100 + '%';
   hb.classList.toggle('low', hpr < 0.35);
-  hudTxtT -= dt;
-  if (hudTxtT <= 0) {
-    hudTxtT = 0.25;
+  S.hudTxtT -= dt;
+  if (S.hudTxtT <= 0) {
+    S.hudTxtT = 0.25;
     $('hudTimer').textContent = fmtT(run.t);
     $('lvlTag').textContent = 'LV ' + P.lvl;
     $('hudKills').textContent = '☠ ' + fmt(run.kills);
@@ -3381,7 +3377,7 @@ function explosion(x, y, r, dmg, pull) {
   aoeDamage(x, y, r, dmg, {});
   fx.push({ type: 'ring', x, y, r0: 8, r1: r, life: 0.35, T: 0.35, col: '#fbbf24' });
   burst(x, y, '#fbbf24', 14);
-  shake += 4;
+  S.shake += 4;
   sfx('boom');
 }
 
@@ -3558,7 +3554,7 @@ function updPickups(dt) {
           break;
         case 'bomb':
           aoeDamage(P.x, P.y, 900, 500);
-          shake += 10;
+          S.shake += 10;
           sfx('boom');
           note(P.x, P.y - 36, '💥 БОМБА! ЗАЧИСТКА', '#f87171');
           break;
@@ -3607,7 +3603,7 @@ function killEnemy(e) {
     spawnPickup(e.x, e.y, 'chest');
     for (let i = 0; i < 8; i++) spawnPickup(e.x + rnd(-70, 70), e.y + rnd(-70, 70), 'coin');
     spawnPickup(e.x + rnd(-40, 40), e.y + rnd(-40, 40), 'heal');
-    shake += 12;
+    S.shake += 12;
     sfx('boom');
     if (e.final && !run.endless) {
       endRun(true);
@@ -3695,15 +3691,15 @@ function updFx(dt) {
       f.fired = true;
       const w = f.w;
       if (f.horiz) {
-        for (const e of gridNear(P.x, f.coord, Math.hypot(W, H) / 2)) {
+        for (const e of gridNear(P.x, f.coord, Math.hypot(S.W, S.H) / 2)) {
           if (Math.abs(e.y - f.coord) < w / 2 + e.r * 0.5) hurtEnemy(e, f.dmg, {});
         }
       } else {
-        for (const e of gridNear(f.coord, P.y, Math.hypot(W, H) / 2)) {
+        for (const e of gridNear(f.coord, P.y, Math.hypot(S.W, S.H) / 2)) {
           if (Math.abs(e.x - f.coord) < w / 2 + e.r * 0.5) hurtEnemy(e, f.dmg, {});
         }
       }
-      shake += 2;
+      S.shake += 2;
     }
     if (f.life <= 0) fx.splice(i, 1);
   }
@@ -3712,15 +3708,12 @@ function updFx(dt) {
 /* ================= CANVAS / RENDER ================= */
 const cv = $('game'),
   ctx = cv.getContext('2d');
-let W = innerWidth,
-  H = innerHeight,
-  dpr = 1;
 function resize() {
-  dpr = Math.min(2, window.devicePixelRatio || 1);
-  W = innerWidth;
-  H = innerHeight;
-  cv.width = W * dpr;
-  cv.height = H * dpr;
+  S.dpr = Math.min(2, window.devicePixelRatio || 1);
+  S.W = innerWidth;
+  S.H = innerHeight;
+  cv.width = S.W * S.dpr;
+  cv.height = S.H * S.dpr;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -3746,15 +3739,15 @@ const CHARCOL = {
 };
 
 function render() {
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
   const st = run.stage;
   ctx.fillStyle = st.bg;
-  ctx.fillRect(0, 0, W, H);
-  const sh = save.set.shake ? shake : 0;
+  ctx.fillRect(0, 0, S.W, S.H);
+  const sh = save.set.shake ? S.shake : 0;
   const shx = sh > 0 ? rnd(-sh, sh) : 0,
     shy = sh > 0 ? rnd(-sh, sh) : 0;
-  const ox = W / 2 - cam.x + shx,
-    oy = H / 2 - cam.y + shy;
+  const ox = S.W / 2 - cam.x + shx,
+    oy = S.H / 2 - cam.y + shy;
   drawGrid(st, ox, oy);
   drawDecor(st, ox, oy);
   drawPools(ox, oy);
@@ -3769,13 +3762,13 @@ function render() {
   drawParts(ox, oy);
   drawDmgNums(ox, oy);
   drawNotes(ox, oy);
-  if (save.meta.minimap && run && appState !== 'over') drawMinimap();
+  if (save.meta.minimap && run && S.appState !== 'over') drawMinimap();
 }
 function drawMinimap() {
   const mw = 150,
     mh = 150,
-    mx = W - mw - 12,
-    my = H - mh - 12;
+    mx = S.W - mw - 12,
+    my = S.H - mh - 12;
   ctx.fillStyle = 'rgba(4,9,6,.82)';
   ctx.fillRect(mx, my, mw, mh);
   ctx.strokeStyle = '#1e4d2f';
@@ -3812,21 +3805,21 @@ function drawGrid(st, ox, oy) {
   const x0 = Math.floor((ox * -1) / sp) * sp,
     y0 = Math.floor((oy * -1) / sp) * sp;
   ctx.beginPath();
-  for (let x = x0; x < ox * -1 + W + sp; x += sp) {
+  for (let x = x0; x < ox * -1 + S.W + sp; x += sp) {
     ctx.moveTo(x + ox, 0);
-    ctx.lineTo(x + ox, H);
+    ctx.lineTo(x + ox, S.H);
   }
-  for (let y = y0; y < oy * -1 + H + sp; y += sp) {
+  for (let y = y0; y < oy * -1 + S.H + sp; y += sp) {
     ctx.moveTo(0, y + oy);
-    ctx.lineTo(W, y + oy);
+    ctx.lineTo(S.W, y + oy);
   }
   ctx.stroke();
   // deterministic props
   const ps = 168;
-  const cx0 = Math.floor((cam.x - W / 2) / ps),
-    cx1 = Math.floor((cam.x + W / 2) / ps);
-  const cy0 = Math.floor((cam.y - H / 2) / ps),
-    cy1 = Math.floor((cam.y + H / 2) / ps);
+  const cx0 = Math.floor((cam.x - S.W / 2) / ps),
+    cx1 = Math.floor((cam.x + S.W / 2) / ps);
+  const cy0 = Math.floor((cam.y - S.H / 2) / ps),
+    cy1 = Math.floor((cam.y + S.H / 2) / ps);
   ctx.fillStyle = st.accent;
   for (let ix = cx0; ix <= cx1; ix++)
     for (let iy = cy0; iy <= cy1; iy++) {
@@ -4032,24 +4025,24 @@ function pScan(g, w, h, t) {
 }
 function drawDecor(st, ox, oy) {
   /* подсветка в цвете карты */
-  const g = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, Math.max(W, H) * 0.65);
+  const g = ctx.createRadialGradient(S.W / 2, S.H / 2, 60, S.W / 2, S.H / 2, Math.max(S.W, S.H) * 0.65);
   g.addColorStop(0, 'rgba(' + (st.glowRGB || '56,224,127') + ',0.06)');
   g.addColorStop(1, 'rgba(' + (st.glowRGB || '56,224,127') + ',0)');
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, S.W, S.H);
   const t = run.t;
   /* крупные пропы сцены: детерминированные по мировым ячейкам, не мерцают при движении камеры */
   const ps = st.decor === 'night' ? 300 : 270;
-  const cx0 = Math.floor((cam.x - W / 2 - 150) / ps),
-    cx1 = Math.floor((cam.x + W / 2 + 150) / ps);
-  const cy0 = Math.floor((cam.y - H / 2 - 150) / ps),
-    cy1 = Math.floor((cam.y + H / 2 + 150) / ps);
+  const cx0 = Math.floor((cam.x - S.W / 2 - 150) / ps),
+    cx1 = Math.floor((cam.x + S.W / 2 + 150) / ps);
+  const cy0 = Math.floor((cam.y - S.H / 2 - 150) / ps),
+    cy1 = Math.floor((cam.y + S.H / 2 + 150) / ps);
   for (let ix = cx0; ix <= cx1; ix++)
     for (let iy = cy0; iy <= cy1; iy++) {
       const h = cellH(ix, iy, 1);
       const px = ix * ps + h * ps * 0.4 + ox,
         py = iy * ps + ((h * 7) % 1) * ps * 0.4 + oy;
-      if (px < -150 || px > W + 20 || py < -130 || py > H + 20) continue;
+      if (px < -150 || px > S.W + 20 || py < -130 || py > S.H + 20) continue;
       if (st.decor === 'server') {
         if (h < 0.24) pRack(ctx, px, py, h, t);
         else if (h < 0.33) pVent(ctx, px, py);
@@ -4061,10 +4054,10 @@ function drawDecor(st, ox, oy) {
       }
     }
   if (st.decor === 'night') {
-    pStars(ctx, W, H, t, ox, oy);
-    pMoon(ctx, W);
+    pStars(ctx, S.W, S.H, t, ox, oy);
+    pMoon(ctx, S.W);
   } else if (st.decor === 'mainframe') {
-    pScan(ctx, W, H, t);
+    pScan(ctx, S.W, S.H, t);
   }
 }
 function drawPools(ox, oy) {
@@ -4128,7 +4121,7 @@ function drawEnemies(ox, oy) {
     if (e.hp <= 0) continue;
     const x = e.x + ox,
       y = e.y + oy;
-    if (x < -70 || x > W + 70 || y < -70 || y > H + 70) continue;
+    if (x < -70 || x > S.W + 70 || y < -70 || y > S.H + 70) continue;
     const dxp = P.x - e.x,
       dyp = P.y - e.y,
       angP = Math.atan2(dyp, dxp);
@@ -5995,7 +5988,7 @@ function drawBullets(ox, oy) {
   for (const b of bullets) {
     const x = b.x + ox,
       y = b.y + oy;
-    if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+    if (x < -40 || x > S.W + 40 || y < -40 || y > S.H + 40) continue;
     if (b.kind === 'knife') {
       ctx.strokeStyle = '#eafff3';
       ctx.lineWidth = b.big ? 4.5 : 3;
@@ -6169,10 +6162,10 @@ function drawFx(ox, oy) {
       ctx.beginPath();
       if (f.horiz) {
         ctx.moveTo(0, f.coord + oy);
-        ctx.lineTo(W, f.coord + oy);
+        ctx.lineTo(S.W, f.coord + oy);
       } else {
         ctx.moveTo(f.coord + ox, 0);
-        ctx.lineTo(f.coord + ox, H);
+        ctx.lineTo(f.coord + ox, S.H);
       }
       ctx.stroke();
       if (tel) {
@@ -6303,7 +6296,7 @@ function hideAllScreens() {
   document.querySelectorAll('.screen,.modal').forEach(e => e.classList.add('hidden'));
 }
 function openScreen(name) {
-  appState = name;
+  S.appState = name;
   hideAllScreens();
   if (name === 'menu') {
     $('menu').classList.remove('hidden');
@@ -6963,7 +6956,7 @@ bindTgl(
 );
 /* галочка автовыбора мода ПРЯМО в окне повышения уровня (показывается, только когда среди выбора есть моды) */
 $('lvlAutoTgl').onclick = () => {
-  if (appState !== 'levelup') return;
+  if (S.appState !== 'levelup') return;
   save.set.automod = !save.set.automod;
   syncAutomod();
   sfx('click');
@@ -7078,7 +7071,7 @@ $('goMenu').onclick = () => {
   openScreen('menu');
 };
 $('chestOk').onclick = () => {
-  if (appState !== 'chest') return;
+  if (S.appState !== 'chest') return;
   sfx('click');
   if (chestEvo) {
     applyEvo(chestEvo);
@@ -7088,17 +7081,17 @@ $('chestOk').onclick = () => {
   $('chestNo').classList.add('hidden');
   $('chestHint').classList.add('hidden');
   if (P.pendLv > 0) openLevelup();
-  else appState = 'run';
+  else S.appState = 'run';
 };
 $('chestNo').onclick = () => {
-  if (appState !== 'chest') return;
+  if (S.appState !== 'chest') return;
   sfx('click');
   chestEvo = null;
   $('chestModal').classList.add('hidden');
   $('chestNo').classList.add('hidden');
   $('chestHint').classList.add('hidden');
   if (P.pendLv > 0) openLevelup();
-  else appState = 'run';
+  else S.appState = 'run';
 };
 $('endlessTgl').onclick = () => {
   if (!selStage || !endlessUnlocked(selStage)) return;
@@ -7117,9 +7110,9 @@ function frame(ts) {
   }
   const dt = Math.min(0.05, Math.max(0.0001, (ts - lastTs) / 1000));
   lastTs = ts;
-  if (appState === 'run') update(dt);
-  else shake = 0; /* на паузах/окнах выбора экран не трясётся */
-  if (hasRun) render();
+  if (S.appState === 'run') update(dt);
+  else S.shake = 0; /* на паузах/окнах выбора экран не трясётся */
+  if (S.hasRun) render();
 }
 grantBackUnlocks();
 checkAch();
@@ -7135,7 +7128,7 @@ requestAnimationFrame(frame);
 
 /* debug handle (для тестов) */
 window.G = {
-  state: () => appState,
+  state: () => S.appState,
   P: () => P,
   run: () => run,
   save: () => save,
@@ -7150,11 +7143,11 @@ window.G = {
   lvl: () => {
     if (P) {
       P.pendLv++;
-      if (appState === 'run') openLevelup();
+      if (S.appState === 'run') openLevelup();
     }
   },
   evo: () => {
-    if (appState === 'run') {
+    if (S.appState === 'run') {
       const c = findEvo1() || findHyper();
       if (c) openEvoModal(c);
       else toast('нет кандидатов на слияние', 'red');

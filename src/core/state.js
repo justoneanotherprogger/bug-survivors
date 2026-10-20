@@ -1,4 +1,14 @@
 /* ================= STATE ================= */
+export const S = {
+  appState: 'menu',
+  hasRun: false,
+  shake: 0,
+  uidC: 1,
+  hudTxtT: 0,
+  W: innerWidth,
+  H: innerHeight,
+  dpr: 1,
+};
 export const P = {};
 export const run = {};
 export const enemies = [];
