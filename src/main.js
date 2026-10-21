@@ -28,6 +28,8 @@ import { ETYPES, BOSSES } from './data/enemies.js';
 import { STAGES } from './data/stages.js';
 import { META, META_ACH, META_ACH_NAME } from './data/meta.js';
 import { ACH } from './data/achievements.js';
+import { pl, wUnlocked, pUnlocked, recompute, xpNeed, threat, rew, enemyPow, hpMul, timeSpd } from './run/stats.js';
+import { resetRun, finishRun } from './run/lifecycle.js';
 
 /* ================= STATE ================= */
 
@@ -124,148 +126,9 @@ function joyEnd(e) {
 window.addEventListener('pointerup', joyEnd, { passive: true });
 window.addEventListener('pointercancel', joyEnd, { passive: true });
 
-/* ================= RUN STATS ================= */
-function pl(id) {
-  const p = P.passives.find(x => x.id === id);
-  const ab = (P.absorbed && P.absorbed[id]) || 0;
-  return Math.max(p ? p.lvl : 0, ab);
-}
-function wUnlocked(id) {
-  const w = WEAPONS[id];
-  return !w.lockAch || !!save.ach[w.lockAch];
-}
-function pUnlocked(id) {
-  const p = PASSIVES[id];
-  return !p.lockAch || !!save.ach[p.lockAch];
-}
-function recompute() {
-  const c = CHARS.find(c => c.id === run.charId);
-  const b = c.b || {};
-  const m = save.meta;
-  const hpRatio = P.maxhp > 0 ? P.hp / P.maxhp : 1; /* доля HP до пересчёта — при изменении maxhp процент сохраняется */
-  P.maxhp =
-    Math.round(50 * (b.hp || 1) * (1 + 0.1 * m.hp) * (1 + 0.2 * pl('hp'))) +
-    (m.hpinf ||
-      0); /* HP — детерминированная величина: база × агент × пассивка × мета% + плоские «ГОРЯЧИЕ ПАТЧИ». Скрытого роста от уровней нет */
-  P.dmgMul = (1 + 0.1 * pl('dmg')) * (1 + 0.05 * m.power) * (b.dmg || 1) * (1 + 0.01 * (m.dinf || 0));
-  P.cdMul = (1 - 0.08 * pl('cd')) * (1 - 0.03 * m.cd) * (b.cd || 1);
-  P.areaMul = (1 + 0.1 * pl('area')) * (1 + 0.05 * m.area) * (b.area || 1);
-  P.projMul = (1 + 0.1 * pl('proj')) * (b.proj || 1);
-  P.durMul = 1 + 0.12 * pl('dur');
-  P.spd = 170 * (1 + 0.07 * pl('mspd')) * (1 + 0.04 * m.mspd) * (b.mspd || 1);
-  P.armor = pl('armor') + m.armor + (b.armor || 0);
-  P.regen = 0.25 * pl('regen') + 0.15 * m.regen + (b.regen || 0);
-  P.amount = pl('amount') + m.amount + (b.amount || 0);
-  P.luck = (1 + 0.1 * pl('luck')) * (1 + 0.08 * m.luck);
-  P.growthMul = (1 + 0.08 * pl('growth')) * (1 + 0.05 * m.growth);
-  P.magnetR = 55 * (1 + 0.25 * pl('magnet')) * (b.magnet || 1);
-  P.revive = Math.floor(m.revive) + (b.revive || 0);
-  P.wCap = 6 + (m.wslot || 0);
-  P.pCap = 6 + (m.pslot || 0);
-  const gr = c.grow;
-  if (gr) {
-    const L = Math.max(0, P.lvl - 1),
-      k = L * gr.per;
-    if (gr.s === 'dmg') P.dmgMul *= 1 + k;
-    else if (gr.s === 'cd') P.cdMul *= Math.max(0.35, 1 - k);
-    else if (gr.s === 'area') P.areaMul *= 1 + k;
-    else if (gr.s === 'proj') P.projMul *= 1 + k;
-    else if (gr.s === 'dur') P.durMul *= 1 + k;
-    else if (gr.s === 'hp') P.maxhp = Math.round(P.maxhp * (1 + k));
-    else if (gr.s === 'mspd') P.spd *= 1 + k;
-    else if (gr.s === 'magnet') P.magnetR *= 1 + k;
-    else if (gr.s === 'luck') P.luck *= 1 + k;
-    else if (gr.s === 'growth') P.growthMul *= 1 + k;
-    else if (gr.s === 'all') {
-      P.dmgMul *= 1 + k;
-      P.areaMul *= 1 + k;
-      P.projMul *= 1 + k;
-      P.durMul *= 1 + k;
-      P.spd *= 1 + k;
-      P.magnetR *= 1 + k;
-      P.luck *= 1 + k;
-      P.growthMul *= 1 + k;
-      P.cdMul *= Math.max(0.35, 1 - k);
-      P.maxhp = Math.round(P.maxhp * (1 + k));
-    }
-  }
-  P.hp = Math.min(P.maxhp, hpRatio * P.maxhp);
-}
-function xpNeed(l) {
-  return Math.floor(6 + l * 4 + Math.pow(l, 1.7));
-}
-
 /* ================= RUN LIFECYCLE ================= */
 function startRun(charId, stageId, endless) {
-  const ch = CHARS.find(c => c.id === charId);
-  const st = STAGES.find(s => s.id === stageId);
-  enemies.length = 0;
-  bullets.length = 0;
-  gems.length = 0;
-  pickups.length = 0;
-  pools.length = 0;
-  fx.length = 0;
-  parts.length = 0;
-  dmgNums.length = 0;
-  notes.length = 0;
-  Object.assign(P, {
-    x: 0,
-    y: 0,
-    r: 13,
-    hp: 50,
-    maxhp: 50,
-    spd: 170,
-    weapons: [],
-    passives: [],
-    absorbed: {},
-    usedW: {},
-    xp: 0,
-    need: xpNeed(1),
-    lvl: 1,
-    pendLv: 0,
-    iv: 0,
-    aim: { x: 1, y: 0 },
-    dmgMul: 1,
-    cdMul: 1,
-    areaMul: 1,
-    projMul: 1,
-    durMul: 1,
-    armor: 0,
-    regen: 0,
-    amount: 0,
-    luck: 1,
-    growthMul: 1,
-    magnetR: 55,
-    revive: 0,
-    wCap: 6,
-    pCap: 6,
-  });
-  Object.assign(run, {
-    charId,
-    stageId,
-    endless: !!endless,
-    stage: st,
-    t: 0,
-    kills: 0,
-    coins: 0,
-    xpTotal: 0,
-    spawnT: 0.5,
-    waveIdx: 0,
-    nextElite: 35,
-    eliteNext: false,
-    nextRing: 150,
-    nextEndBoss: 1740,
-    bossPlan: [300, 600, 900, 1200, 1500, 1740].map((t, i) => ({ t, tier: i + 1 })),
-    boss: null,
-    waves: makeWaves(st),
-  });
-  recompute();
-  P.hp = P.maxhp;
-  if (ch.weapon) P.weapons.push({ id: ch.weapon, lvl: 1, timer: 0.3, active: false, pend: null });
-  cam.x = 0;
-  cam.y = 0;
-  S.shake = 0;
-  S.hasRun = true;
+  resetRun(charId, stageId, endless);
   S.appState = 'run';
   hideAllScreens();
   $('hud').classList.remove('hidden');
@@ -273,19 +136,6 @@ function startRun(charId, stageId, endless) {
   save.stats.runs++;
   saveGame();
   showHint('ВЫЖИВИ', 3);
-}
-function makeWaves(st) {
-  const wv = [];
-  for (let m = 0; m < 30; m++) {
-    const ph = Math.min(st.pool.length - 1, Math.floor(m / 5));
-    wv.push({
-      t: m * 60,
-      types: st.pool[ph],
-      itv: Math.max(0.22, 1.05 - m * 0.028),
-      batch: Math.min(10, 3 + Math.floor(m * 0.26)),
-    });
-  }
-  return wv;
 }
 function showHint(txt, ms) {
   const h = $('hint');
@@ -300,29 +150,7 @@ function endRun(win, quit) {
   if (S.appState === 'over') return;
   S.appState = 'over';
   hideTip();
-  const greed = 1 + 0.1 * save.meta.greed + 0.01 * save.meta.cinf;
-  const earned = run.coins + (win ? 400 : 0);
-  const got = Math.round(earned * greed);
-  save.coins += got;
-  save.stats.coins += got;
-  if (win) {
-    save.stats.wins++;
-    save.stats.winsBy[run.stageId] = (save.stats.winsBy[run.stageId] || 0) + 1;
-  } else if (!quit) save.stats.deaths++;
-  const best = Math.floor(run.t);
-  if (best > save.stats.best[run.stageId]) save.stats.best[run.stageId] = best;
-  if (best > save.stats.bestAny) save.stats.bestAny = best;
-  save.stats.bestBy = save.stats.bestBy || {};
-  if (best > (save.stats.bestBy[run.charId] || 0)) save.stats.bestBy[run.charId] = best;
-  if (run.kills > save.stats.bestKills) save.stats.bestKills = run.kills;
-  save.stats.xp += run.xpTotal;
-  /* уровни оружия за забег попадают в статы из ЛЮБОГО источника (левелап, сундуки, будущие пути):
-     без этого синка ачивки «Прокачать X до ур. 8» зависели от того, чем именно взята последняя ступень */
-  save.stats.maxLvlBy = save.stats.maxLvlBy || {};
-  for (const w of P.weapons) {
-    if (w.lvl > save.stats.maxlvl) save.stats.maxlvl = w.lvl;
-    if (w.lvl > (save.stats.maxLvlBy[w.id] || 0)) save.stats.maxLvlBy[w.id] = w.lvl;
-  }
+  const { got, greed } = finishRun(win, quit);
   /* ачивки, «дозревшие» за забег, оформляются только здесь: без тостов посреди боя.
      Открытые ими пассивки/агенты/карты доступны со следующего забега */
   const newAch = checkAch(true);
@@ -784,26 +612,6 @@ function openChest() {
 }
 
 /* ================= SPAWN DIRECTOR ================= */
-/* «угроза»: ТЕХДОЛГ (мета) + СПАГЕТТИ-КОД (пассивка) — хард-режим с честным фарм-апсайдом.
-   Спавн линейный (+10%/ур), HP и скорость — экспонента (×1.16 / ×1.06 за уровень):
-   полный стак L=10 → ×2.0 спавн, ×4.4 HP, ×1.8 скорости; лут жирнее на +7%/ур (rew()). */
-function threat() {
-  const L = (save.meta.td || 0) + pl('spag');
-  return { cnt: 1 + 0.1 * L, hp: Math.pow(1.16, L), spd: Math.pow(1.06, L) };
-}
-function rew() {
-  return 1 + 0.07 * ((save.meta.td || 0) + pl('spag'));
-}
-function enemyPow() {
-  return 1 + 0.01 * (save.meta.buginf || 0);
-} /* «ОТЧЁТЫ О БАГАХ»: покупные +1%/шт к спавну, HP, урону и скорости багов */
-function hpMul() {
-  const m = run.t / 60;
-  return (1 + m * 0.45 + m * m * 0.02) * run.stage.hpMul * threat().hp * enemyPow();
-}
-function timeSpd() {
-  return 1 + (run.t / 60) * 0.1;
-} /* враги ускоряются +10%/мин, игрок — НЕТ: давление растёт по ходу забега */
 function spawnEnemy(typeId, x, y, o = {}) {
   const t = ETYPES[typeId];
   if (!t) return null;
