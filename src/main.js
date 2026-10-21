@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, TAU, clamp, lerp, rnd, ri, pick, dist2, fmt, fmtT } from './core/utils.js';
+import { $, TAU, clamp, lerp, rnd, ri, dist2, fmt, fmtT } from './core/utils.js';
 import { SAVE_KEY, save, saveGame, reloadSave } from './core/save.js';
 import {
   S,
@@ -24,12 +24,14 @@ import { CHARS } from './data/chars.js';
 import { WEAPONS } from './data/weapons.js';
 import { PASSIVES, KEYSTATS, MODTXT } from './data/upgrades.js';
 import { HYPERS, PRIO } from './data/hypers.js';
-import { ETYPES, BOSSES } from './data/enemies.js';
 import { STAGES } from './data/stages.js';
 import { META, META_ACH, META_ACH_NAME } from './data/meta.js';
 import { ACH } from './data/achievements.js';
-import { pl, wUnlocked, pUnlocked, recompute, xpNeed, threat, rew, enemyPow, hpMul, timeSpd } from './run/stats.js';
+import { pl, wUnlocked, pUnlocked, recompute, threat, rew, enemyPow, timeSpd } from './run/stats.js';
 import { resetRun, finishRun } from './run/lifecycle.js';
+import { hooks } from './core/hooks.js';
+import { gainXP, rollChoices, findEvo1, findHyper, applyEvo } from './run/progression.js';
+import { spawnEnemy, spawnBoss, director } from './run/director.js';
 
 /* ================= STATE ================= */
 
@@ -225,24 +227,6 @@ function resumeGame() {
 }
 
 /* ================= XP / LEVELUP ================= */
-function gainXP(v) {
-  P.xp += Math.round(v * P.growthMul);
-  run.xpTotal += v;
-  let leveled = false;
-  while (P.xp >= P.need) {
-    P.xp -= P.need;
-    P.lvl++;
-    P.need = xpNeed(P.lvl);
-    P.pendLv++;
-    leveled = true;
-    recompute();
-  }
-  if (leveled) {
-    if (P.lvl > save.stats.bestLvl) save.stats.bestLvl = P.lvl;
-    sfx('lvl');
-    if (S.appState === 'run') openLevelup();
-  }
-}
 let lvlChoices = [];
 function openLevelup() {
   S.appState = 'levelup';
@@ -313,45 +297,6 @@ function openLevelup() {
   }
   $('levelup').classList.remove('hidden');
 }
-function rollChoices() {
-  const pool = [],
-    mods = [];
-  for (const w of P.weapons) {
-    if (w.lvl < 8) pool.push({ type: 'w', id: w.id, to: w.lvl + 1, w: 12 });
-    else mods.push({ type: 'mod', id: w.id, to: (w.mk || 0) + 1, w: 8 });
-  }
-  if (P.weapons.length < P.wCap)
-    for (const id in WEAPONS)
-      if (wUnlocked(id) && !P.weapons.find(w => w.id === id) && !P.usedW[id]) pool.push({ type: 'w', id, to: 1, w: 7 });
-  /* СПАГЕТТИ-КОД в левелапе не участвует: добыча и прокачка — только из сундуков */
-  for (const p of P.passives)
-    if (p.lvl < PASSIVES[p.id].max && p.id !== 'spag') pool.push({ type: 'p', id: p.id, to: p.lvl + 1, w: 9 });
-  const pUsed = P.passives.filter(p => p.id !== 'spag').length; /* spag не занимает слоты пассивок */
-  if (pUsed < P.pCap)
-    for (const id in PASSIVES)
-      if (id !== 'spag' && pUnlocked(id) && !P.passives.find(p => p.id === id) && !(id in P.absorbed))
-        pool.push({ type: 'p', id, to: 1, w: 6 });
-  /* МОДы предлагаются только когда всё остальное выкачано на максимум */
-  if (!pool.length) pool.push(...mods);
-  const out = [];
-  const n = P.luck >= 1.3 ? 4 : 3;
-  while (out.length < n && pool.length) {
-    let tot = 0;
-    for (const c of pool) tot += c.w;
-    let r = rnd(tot),
-      idx = pool.length - 1;
-    for (let i = 0; i < pool.length; i++) {
-      r -= pool[i].w;
-      if (r <= 0) {
-        idx = i;
-        break;
-      }
-    }
-    out.push(pool.splice(idx, 1)[0]);
-  }
-  /* денег и еды в меню уровня больше нет: как только пул пуст — остаются только моды */
-  return out;
-}
 function chooseLevel(i) {
   if (S.appState !== 'levelup') return;
   const c = lvlChoices[i];
@@ -404,50 +349,6 @@ function lvDesc(id, to) {
 /* приоритет: эволюция (мерж оружия+пассивки) → гипер (мерж ДВУХ эволюций) → апгрейды (окно) + случайный СПАГЕТТИ-КОД → монеты (тост без паузы).
    СПАГЕТТИ-КОД добывается ТОЛЬКО здесь: шанс растёт с числом убийств (чем больше фармишь — тем выше шанс, что они станут сильнее), слоты пассивок не занимает */
 let chestEvo = null;
-function findEvo1() {
-  for (const w of P.weapons) {
-    if (w.ev || w.lvl < 8) continue;
-    const e = WEAPONS[w.id].evo;
-    if (e && pl(e.need) >= PASSIVES[e.need].max) return { mode: 'evo', w };
-  }
-  return null;
-}
-function findHyper() {
-  for (const w of P.weapons) {
-    if (!w.ev || w.hyper) continue;
-    const h = HYPERS[w.id];
-    if (!h || !h.host) continue;
-    const u = P.weapons.find(
-      x => x !== w && x.id === h.with && x.ev && !x.hyper
-    ); /* вторая эволюция ФИКСИРОВАННОЙ пары */
-    if (u) return { mode: 'hyper', w, u };
-  }
-  return null;
-}
-function applyEvo(c) {
-  if (c.mode === 'evo') {
-    const w = c.w,
-      e = WEAPONS[w.id].evo;
-    w.ev = true;
-    P.absorbed[e.need] = PASSIVES[e.need].max;
-    P.passives = P.passives.filter(p => p.id !== e.need);
-    save.stats.evos++;
-    save.stats.evoBy[w.id] = (save.stats.evoBy[w.id] || 0) + 1;
-    note(P.x, P.y - 36, '⚗️ ЭВОЛЮЦИЯ\n' + e.name);
-  } else {
-    const w = c.w,
-      u = c.u;
-    w.hyper = true;
-    w.pend = null;
-    P.usedW[u.id] = 1; /* партнёр по паре поглощён: уходит из ростера до конца забега */
-    if (u.mk) w.mk = (w.mk || 0) + u.mk; /* МОДы партнёра переходят гипер-форме */
-    P.weapons = P.weapons.filter(x => x !== u);
-    save.stats.hypers++;
-    note(P.x, P.y - 36, '⚗️ ГИПЕР-ФОРМА\n' + HYPERS[w.id].name);
-  }
-  recompute();
-  buildIcons(); /* ачивки — только на экране окончания забега */
-}
 function openEvoModal(c) {
   S.appState = 'chest';
   chestEvo = c;
@@ -609,157 +510,6 @@ function openChest() {
   sfx('chest');
   recompute();
   buildIcons();
-}
-
-/* ================= SPAWN DIRECTOR ================= */
-function spawnEnemy(typeId, x, y, o = {}) {
-  const t = ETYPES[typeId];
-  if (!t) return null;
-  const e = {
-    uid: S.uidC++,
-    type: typeId,
-    x,
-    y,
-    r: t.r,
-    hp: 0,
-    maxhp: 0,
-    spd: t.spd,
-    dmg: t.dmg,
-    xp: t.xp,
-    col: t.col,
-    hitCd: 0,
-    flash: 0,
-    slowT: 0,
-    burnT: 0,
-    burnS: 0,
-    ph: rnd(TAU),
-    elite: !!o.elite,
-    spT: 0,
-  };
-  e.hp = e.maxhp = t.hp * hpMul() * (o.elite ? 14 : 1);
-  e.r = t.r * (o.elite ? 1.8 : 1);
-  e.spd = t.spd * run.stage.spdMul * (o.elite ? 0.85 : 1) * threat().spd * rnd(0.9, 1.1);
-  if (o.elite) {
-    e.xp = t.xp * 10;
-    e.dmg = Math.round(t.dmg * 1.5);
-  }
-  if (o.surge) e.surgeT = 6; /* волна по кругу: 6 сек сокращения кольца */
-  enemies.push(e);
-  return e;
-}
-function spawnBoss(tier) {
-  const def = BOSSES[Math.min(tier - 1, BOSSES.length - 1)];
-  const a = rnd(TAU),
-    R = Math.hypot(S.W, S.H) / 2 + 120;
-  const isFinal = !!def.final;
-  const e = {
-    uid: S.uidC++,
-    type: 'boss',
-    boss: true,
-    final: isFinal,
-    tier,
-    name: isFinal ? run.stage.finalName : def.name,
-    x: P.x + Math.cos(a) * R,
-    y: P.y + Math.sin(a) * R,
-    r: def.r,
-    hp: def.hp * run.stage.hpMul * threat().hp * (run.endless ? 1 + Math.floor(run.t / 300) * 0.5 : 1),
-    maxhp: 1,
-    spd: def.spd * run.stage.spdMul * threat().spd,
-    dmg: def.dmg,
-    xp: 60 + tier * 30,
-    col: def.col,
-    hitCd: 0,
-    flash: 0,
-    slowT: 0,
-    burnT: 0,
-    burnS: 0,
-    ph: rnd(TAU),
-    spT: 0,
-    elite: false,
-    spawner: !!def.spawner,
-  };
-  e.maxhp = e.hp;
-  enemies.push(e);
-  run.boss = e;
-  $('bossBarWrap').classList.remove('hidden');
-  $('bossName').textContent = e.name;
-  note(e.x, e.y - e.r - 26, '⚠ ' + e.name + ' ПРОСНУЛСЯ', '#f87171');
-  sfx('boss');
-}
-function ringWave(types) {
-  /* «меня окружили, бежать некуда»: игрок всегда в центре экрана, поэтому кольцо
-     входит ПО КРАЯМ ЭКРАНА — дистанция до края в направлении θ = min((S.W/2)/|cosθ|,(S.H/2)/|sinθ|)+64
-     (раньше был фикс. полудиагональ+40: на портрете верх/низ появлялись далеко за экраном и
-     волна превращалась в хвост-догонялки). Каждому врагу волны даётся surge: 6 секунд
-     сокращения с множителем до ×1.8 (спадает линейно) — разрядить кольцо можно только огнём.
-     ПЛОТНОСТЬ: рассадка равномерно ПО ДЛИНЕ ДУГИ, а не по углу — при равных углах просветы
-     на левом/правом краях широкого экрана выходили ~вдвое больше, чем сверху/снизу
-     (ds/dθ ≈ R: 704px против 353px на 1280×577). Шаг 56px при cnt=1 (~78 багов вместо
-     прежних 26 с просветами 85–170px) и дальше плотнее пропорционально threat().
-     CAP сознательно игнорируется: перебор гасит ОБЫЧНЫЙ спавн в director, кольцо не режем. */
-  const SEG = 1024,
-    pos = [];
-  for (let s = 0; s <= SEG; s++) {
-    const a = ((s % SEG) / SEG) * TAU,
-      ca = Math.cos(a),
-      sa = Math.sin(a);
-    /* расширенный прямоугольник (S.W+128)×(S.H+128): края ровно в 64px за экраном.
-       Вариант min(...)+64 (64 вдоль ЛУЧА, а не перпендикуляра) по диагоналям нырял
-       внутрь — просветы на изломах сжимались вдвое относительно прямых участков */
-    const tx = ca !== 0 ? (S.W / 2 + 64) / Math.abs(ca) : 1e9,
-      ty = sa !== 0 ? (S.H / 2 + 64) / Math.abs(sa) : 1e9;
-    const R = Math.min(tx, ty);
-    pos[s] = [ca * R, sa * R];
-  }
-  const cum = [0];
-  for (let s = 1; s <= SEG; s++) cum[s] = cum[s - 1] + Math.hypot(pos[s][0] - pos[s - 1][0], pos[s][1] - pos[s - 1][1]);
-  const n = Math.max(26, Math.round((cum[SEG] / 56) * threat().cnt * enemyPow()));
-  let idx = 0;
-  for (let k = 0; k < n; k++) {
-    const target = ((k + 0.5) / n) * cum[SEG];
-    while (idx < SEG && cum[idx + 1] < target) idx++;
-    const t = (target - cum[idx]) / Math.max(1e-6, cum[idx + 1] - cum[idx]);
-    spawnEnemy(
-      pick(types),
-      P.x + pos[idx][0] + (pos[idx + 1][0] - pos[idx][0]) * t,
-      P.y + pos[idx][1] + (pos[idx + 1][1] - pos[idx][1]) * t,
-      { surge: 1 }
-    );
-  }
-  note(P.x, P.y - 40, 'ВОЛНА ПО КРУГУ!');
-}
-function director(dt) {
-  run.spawnT -= dt;
-  while (run.waveIdx < run.waves.length - 1 && run.t >= run.waves[run.waveIdx + 1].t) run.waveIdx++;
-  const w = run.waves[run.waveIdx];
-  while (run.bossPlan.length && run.t >= run.bossPlan[0].t) {
-    const b = run.bossPlan.shift();
-    spawnBoss(b.tier);
-  }
-  if (run.endless && run.t >= run.nextEndBoss) {
-    run.nextEndBoss += 300;
-    spawnBoss(6 + Math.floor((run.t - 1740) / 300));
-  }
-  if (run.t >= run.nextElite) {
-    run.nextElite += 42;
-    run.eliteNext = true;
-  }
-  if (run.spawnT <= 0) {
-    run.spawnT = (w ? w.itv : 0.5) / (threat().cnt * enemyPow());
-    /* перебор CAP (в т.ч. после кольца, которое CAP не проверяет) — обычный спавн просто молчит */
-    if (enemies.length < Math.round(CAP_ENEMIES * timeSpd() * enemyPow() * Math.min(1.8, threat().cnt)) && w) {
-      const R = Math.hypot(S.W, S.H) / 2 + 70;
-      for (let i = 0; i < w.batch; i++) {
-        const a = rnd(TAU);
-        spawnEnemy(pick(w.types), P.x + Math.cos(a) * R, P.y + Math.sin(a) * R, { elite: run.eliteNext && i === 0 });
-      }
-      run.eliteNext = false;
-    }
-  }
-  if (run.t >= run.nextRing) {
-    run.nextRing += 150;
-    ringWave(w ? w.types : ['bug']);
-  }
 }
 
 /* ================= WEAPONS ENGINE ================= */
@@ -5830,6 +5580,14 @@ function frame(ts) {
   else S.shake = 0; /* на паузах/окнах выбора экран не трясётся */
   if (S.hasRun) render();
 }
+hooks.openLevelup = openLevelup;
+hooks.buildIcons = buildIcons;
+hooks.openChest = openChest;
+hooks.endRun = endRun;
+hooks.bossBar = name => {
+  $('bossBarWrap').classList.remove('hidden');
+  $('bossName').textContent = name;
+};
 grantBackUnlocks();
 checkAch();
 openScreen('menu');
