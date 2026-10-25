@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, TAU, clamp, lerp, rnd, ri, fmt, fmtT } from './core/utils.js';
+import { $, TAU, clamp, lerp, rnd, fmt, fmtT } from './core/utils.js';
 import { SAVE_KEY, save, saveGame, reloadSave } from './core/save.js';
 import { S, P, run, enemies, bullets, gems, pickups, pools, fx, parts, dmgNums, notes, cam } from './core/state.js';
 import { sfx } from './core/audio.js';
@@ -15,9 +15,8 @@ import { ACH } from './data/achievements.js';
 import { wUnlocked, pUnlocked, recompute, threat, rew } from './run/stats.js';
 import { resetRun, finishRun } from './run/lifecycle.js';
 import { hooks } from './core/hooks.js';
-import { gainXP, rollChoices, findEvo1, findHyper, applyEvo } from './run/progression.js';
+import { gainXP, rollChoices, findEvo1, findHyper, applyEvo, openChestLogic } from './run/progression.js';
 import { spawnBoss, director } from './run/director.js';
-import { note } from './combat/effects.js';
 import { wstats, lvDesc, updWeapons } from './combat/weapons.js';
 import { gridRebuild, updBullets, updateEnemies, updPools, updPickups, updFx } from './combat/world.js';
 
@@ -374,57 +373,19 @@ function openEvoModal(c) {
   sfx('evo');
 }
 function openChest() {
-  if (S.appState !== 'run') return;
-  const c1 = findEvo1(),
-    ch = findHyper();
-  if (c1) {
-    openEvoModal(c1);
+  const r = openChestLogic();
+  if (!r) return;
+  if (r.mode === 'evo') {
+    openEvoModal(r.c);
     return;
   }
-  if (ch) {
-    openEvoModal(ch);
-    return;
-  }
-  let n = 1;
-  if (Math.random() < 0.4 * P.luck) n++;
-  if (Math.random() < 0.15 * P.luck) n++;
-  const pool = [];
-  for (const w of P.weapons) if (w.lvl < 8) pool.push({ type: 'w', obj: w });
-  for (const p of P.passives) if (p.lvl < PASSIVES[p.id].max && p.id !== 'spag') pool.push({ type: 'p', obj: p });
-  /* СПАГЕТТИ-КОД: бонус-бросок поверх обычных наград. шанс = 0.12 + убийства/4000, кап 0.7 (1000 уб → ~0.37, 2300+ → 0.7) */
-  const spObj = P.passives.find(p => p.id === 'spag');
-  let spagHit = false;
-  if (pUnlocked('spag') && (!spObj || spObj.lvl < PASSIVES.spag.max)) {
-    if (Math.random() < Math.min(0.7, 0.12 + run.kills / 4000)) spagHit = true;
-  }
-  if (spagHit) {
-    if (spObj) spObj.lvl++;
-    else P.passives.push({ id: 'spag', lvl: 1 }); /* мимо лимита слотов — намеренно */
-  }
-  const rewards = [];
-  for (let i = 0; i < n && pool.length; i++) {
-    const c = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
-    c.obj.lvl++;
-    if (c.type === 'w' && c.obj.lvl > save.stats.maxlvl) save.stats.maxlvl = c.obj.lvl;
-    if (c.type === 'w' && c.obj.lvl > ((save.stats.maxLvlBy || {})[c.obj.id] || 0))
-      save.stats.maxLvlBy[c.obj.id] = c.obj.lvl;
-    rewards.push(c.type === 'w' ? { w: c.obj } : { p: c.obj });
-  }
-  if (!rewards.length && !spagHit) {
-    const cc = ri(90, 180);
-    run.coins += cc;
-    sfx('coin');
-    note(P.x, P.y - 36, '🎁 СУНДУК: +' + cc + ' монет');
-    saveGame();
-    return; /* без окна и без паузы */
-  }
-  /* сундук с апгрейдами — окно с описаниями */
+  if (r.mode === 'coins') return;
   chestEvo = null;
   S.appState = 'chest';
   $('chestTitle').innerHTML = '🎁 СУНДУК';
   const items = $('chestItems');
   items.innerHTML = '';
-  if (spagHit) {
+  if (r.spagHit) {
     const sl = P.passives.find(p => p.id === 'spag');
     const d = document.createElement('div');
     d.className = 'chestItem evo';
@@ -436,40 +397,38 @@ function openChest() {
       '</div></div>';
     items.appendChild(d);
   }
-  for (const r of rewards) {
+  for (const rw of r.rewards) {
     const d = document.createElement('div');
-    if (r.w) {
+    if (rw.w) {
       d.className = 'chestItem';
       d.innerHTML =
         '<span class="ci">' +
-        WEAPONS[r.w.id].icon +
+        WEAPONS[rw.w.id].icon +
         '</span><div><div>' +
-        WEAPONS[r.w.id].name +
+        WEAPONS[rw.w.id].name +
         ' → УР. ' +
-        r.w.lvl +
+        rw.w.lvl +
         '</div><div class="cd">' +
-        lvDesc(r.w.id, r.w.lvl) +
+        lvDesc(rw.w.id, rw.w.lvl) +
         '</div></div>';
     } else {
       d.className = 'chestItem';
       d.innerHTML =
         '<span class="ci">' +
-        PASSIVES[r.p.id].icon +
+        PASSIVES[rw.p.id].icon +
         '</span><div><div>' +
-        PASSIVES[r.p.id].name +
+        PASSIVES[rw.p.id].name +
         ' → УР. ' +
-        r.p.lvl +
+        rw.p.lvl +
         '</div><div class="cd">' +
-        PASSIVES[r.p.id].d +
+        PASSIVES[rw.p.id].d +
         '</div></div>';
     }
     items.appendChild(d);
   }
-  const cc = ri(30, 80);
-  run.coins += cc;
   const dc = document.createElement('div');
   dc.className = 'chestItem';
-  dc.innerHTML = '<span class="ci">💰</span><div><div>+' + cc + ' монет</div></div>';
+  dc.innerHTML = '<span class="ci">💰</span><div><div>+' + r.coins + ' монет</div></div>';
   items.appendChild(dc);
   $('chestOk').textContent = 'ЗАБРАТЬ';
   $('chestNo').classList.add('hidden');
@@ -481,9 +440,6 @@ function openChest() {
 }
 
 /* ================= PLAYER UPDATE ================= */
-/* прицеливание лазера: ищем плотные «полосы» врагов на одной линии (по Y для горизонтальных лучей,
-   по X для вертикальных); вес каждой цели падает с дистанцией до игрока (защита в приоритете);
-   лучи уходят в РАЗНЫЕ полосы — минимальный разнос MINSEP по своей оси */
 function updatePlayer(dt) {
   const d = inputDir();
   if (d.x || d.y) {

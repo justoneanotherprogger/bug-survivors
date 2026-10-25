@@ -1,12 +1,12 @@
 import { P, run, S } from '../core/state.js';
-import { save } from '../core/save.js';
+import { save, saveGame } from '../core/save.js';
 import { WEAPONS } from '../data/weapons.js';
 import { PASSIVES } from '../data/upgrades.js';
 import { HYPERS } from '../data/hypers.js';
 import { xpNeed, recompute, pl, wUnlocked, pUnlocked } from './stats.js';
 import { note } from '../combat/effects.js';
 import { sfx } from '../core/audio.js';
-import { rnd } from '../core/utils.js';
+import { rnd, ri } from '../core/utils.js';
 import { hooks } from '../core/hooks.js';
 
 /* ================= XP / LEVELUP ================= */
@@ -112,4 +112,49 @@ export function applyEvo(c) {
   }
   recompute();
   hooks.buildIcons?.(); /* ачивки — только на экране окончания забега */
+}
+
+/* ================= CHEST REWARDS ================= */
+export function openChestLogic() {
+  if (S.appState !== 'run') return null;
+  const c1 = findEvo1(),
+    ch = findHyper();
+  if (c1) return { mode: 'evo', c: c1 };
+  if (ch) return { mode: 'evo', c: ch };
+  let n = 1;
+  if (Math.random() < 0.4 * P.luck) n++;
+  if (Math.random() < 0.15 * P.luck) n++;
+  const pool = [];
+  for (const w of P.weapons) if (w.lvl < 8) pool.push({ type: 'w', obj: w });
+  for (const p of P.passives) if (p.lvl < PASSIVES[p.id].max && p.id !== 'spag') pool.push({ type: 'p', obj: p });
+  /* СПАГЕТТИ-КОД: бонус-бросок поверх обычных наград. шанс = 0.12 + убийства/4000, кап 0.7 (1000 уб → ~0.37, 2300+ → 0.7) */
+  const spObj = P.passives.find(p => p.id === 'spag');
+  let spagHit = false;
+  if (pUnlocked('spag') && (!spObj || spObj.lvl < PASSIVES.spag.max)) {
+    if (Math.random() < Math.min(0.7, 0.12 + run.kills / 4000)) spagHit = true;
+  }
+  if (spagHit) {
+    if (spObj) spObj.lvl++;
+    else P.passives.push({ id: 'spag', lvl: 1 }); /* мимо лимита слотов — намеренно */
+  }
+  const rewards = [];
+  for (let i = 0; i < n && pool.length; i++) {
+    const c = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    c.obj.lvl++;
+    if (c.type === 'w' && c.obj.lvl > save.stats.maxlvl) save.stats.maxlvl = c.obj.lvl;
+    if (c.type === 'w' && c.obj.lvl > ((save.stats.maxLvlBy || {})[c.obj.id] || 0))
+      save.stats.maxLvlBy[c.obj.id] = c.obj.lvl;
+    rewards.push(c.type === 'w' ? { w: c.obj } : { p: c.obj });
+  }
+  if (!rewards.length && !spagHit) {
+    const cc = ri(90, 180);
+    run.coins += cc;
+    sfx('coin');
+    note(P.x, P.y - 36, '🎁 СУНДУК: +' + cc + ' монет');
+    saveGame();
+    return { mode: 'coins', coins: cc }; /* без окна и без паузы */
+  }
+  const cc = ri(30, 80);
+  run.coins += cc;
+  return { mode: 'items', rewards, spagHit, coins: cc };
 }
