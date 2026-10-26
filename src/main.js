@@ -1,7 +1,7 @@
 'use strict';
 
 import { $, clamp, fmt, fmtT } from './core/utils.js';
-import { SAVE_KEY, save, saveGame, reloadSave } from './core/save.js';
+import { save, saveGame } from './core/save.js';
 import { S, P, run, cam } from './core/state.js';
 import { sfx } from './core/audio.js';
 import { keys, joy, inputDir } from './core/input.js';
@@ -20,6 +20,7 @@ import { toast } from './ui/toast.js';
 import { checkAch, grantBackUnlocks } from './ui/achievements.js';
 import { hideTip, mkWIcon, mkPIcon, mkAbsIcon, buildIcons } from './ui/tooltips.js';
 import { ui, goRow, openScreen, hideAllScreens, endlessUnlocked } from './ui/screens.js';
+import { syncAutomod } from './ui/settings.js';
 
 /* ================= STATE ================= */
 
@@ -298,6 +299,18 @@ function chooseLevel(i) {
 }
 
 /* описание того, что даёт уров. TO оружия ID (автодиф уровней) */
+/* галочка автовыбора мода ПРЯМО в окне повышения уровня (показывается, только когда среди выбора есть моды) */
+$('lvlAutoTgl').onclick = () => {
+  if (S.appState !== 'levelup') return;
+  save.set.automod = !save.set.automod;
+  syncAutomod();
+  sfx('click');
+  saveGame();
+  /* включили прямо в окне «только моды» — срабатывает немедленно */
+  if (save.set.automod && lvlChoices.length && lvlChoices.every(c => c.type === 'mod'))
+    chooseLevel(Math.floor(Math.random() * lvlChoices.length));
+};
+
 /* ================= CHEST ================= */
 /* приоритет: эволюция (мерж оружия+пассивки) → гипер (мерж ДВУХ эволюций) → апгрейды (окно) + случайный СПАГЕТТИ-КОД → монеты (тост без паузы).
    СПАГЕТТИ-КОД добывается ТОЛЬКО здесь: шанс растёт с числом убийств (чем больше фармишь — тем выше шанс, что они станут сильнее), слоты пассивок не занимает */
@@ -473,86 +486,6 @@ function updateHUD(dt) {
   if (run.boss && run.boss.hp > 0)
     $('bossBarFill').style.width = clamp((run.boss.hp / run.boss.maxhp) * 100, 0, 100) + '%';
 }
-
-/* ================= SETTINGS ================= */
-function bindTgl(el, get, set) {
-  el.classList.toggle('on', get());
-  el.onclick = () => {
-    set(!get());
-    el.classList.toggle('on', get());
-    sfx('click');
-    saveGame();
-  };
-}
-/* все три зеркала галочки «автовыбор модов» — в синхроне (настройки, пауза, окно уровня) */
-function syncAutomod() {
-  $('automodTgl').classList.toggle('on', save.set.automod);
-  $('lvlAutoTgl').classList.toggle('on', save.set.automod);
-  $('pauseAutoTgl').classList.toggle('on', save.set.automod);
-}
-bindTgl(
-  $('sfxTgl'),
-  () => save.set.sfx,
-  v => (save.set.sfx = v)
-);
-bindTgl(
-  $('shakeTgl'),
-  () => save.set.shake,
-  v => (save.set.shake = v)
-);
-bindTgl(
-  $('automodTgl'),
-  () => save.set.automod,
-  v => {
-    save.set.automod = v;
-    syncAutomod();
-  }
-);
-/* галочка и в меню паузы — автоворд можно выключить не выходя из забега */
-bindTgl(
-  $('pauseAutoTgl'),
-  () => save.set.automod,
-  v => {
-    save.set.automod = v;
-    syncAutomod();
-  }
-);
-/* галочка автовыбора мода ПРЯМО в окне повышения уровня (показывается, только когда среди выбора есть моды) */
-$('lvlAutoTgl').onclick = () => {
-  if (S.appState !== 'levelup') return;
-  save.set.automod = !save.set.automod;
-  syncAutomod();
-  sfx('click');
-  saveGame();
-  /* включили прямо в окне «только моды» — срабатывает немедленно */
-  if (save.set.automod && lvlChoices.length && lvlChoices.every(c => c.type === 'mod'))
-    chooseLevel(Math.floor(Math.random() * lvlChoices.length));
-};
-let resetArmed = false;
-$('resetBtn').onclick = () => {
-  if (!resetArmed) {
-    resetArmed = true;
-    $('resetBtn').textContent = 'ТОЧНО?? НАЖМИ ЕЩЁ РАЗ';
-    setTimeout(() => {
-      resetArmed = false;
-      $('resetBtn').textContent = 'СБРОСИТЬ ВЕСЬ ПРОГРЕСС';
-    }, 3000);
-    return;
-  }
-  localStorage.removeItem(SAVE_KEY);
-  reloadSave();
-  resetArmed = false;
-  $('resetBtn').textContent = 'СБРОСИТЬ ВЕСЬ ПРОГРЕСС';
-  /* полный сброс = немедленная перезагрузка: галочки и экраны биндятся один
-     раз при загрузке скрипта, и любая пауза перед reload оставляет окно,
-     куда можно успеть накликать со старой картинкой. Тост до reload не
-     переживёт перезагрузку — передаём его через sessionStorage и показываем
-     уже в свежем меню (см. BOOT). */
-  try {
-    sessionStorage.setItem('bsResetToast', '1');
-  } catch (e) {}
-  location.reload();
-};
 
 /* ================= BUTTONS ================= */
 $('btnPlay').onclick = () => {
