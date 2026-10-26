@@ -10,7 +10,7 @@ import { WEAPONS } from './data/weapons.js';
 import { PASSIVES, KEYSTATS, MODTXT } from './data/upgrades.js';
 import { HYPERS } from './data/hypers.js';
 import { STAGES } from './data/stages.js';
-import { META, META_ACH, META_ACH_NAME } from './data/meta.js';
+import { META } from './data/meta.js';
 import { ACH } from './data/achievements.js';
 import { wUnlocked, pUnlocked, recompute, threat, rew } from './run/stats.js';
 import { resetRun, finishRun } from './run/lifecycle.js';
@@ -21,20 +21,10 @@ import { wstats, lvDesc, updWeapons } from './combat/weapons.js';
 import { gridRebuild, updBullets, updateEnemies, updPools, updPickups, updFx } from './combat/world.js';
 import { render } from './render/canvas.js';
 import { charArtURL, stageArtURL } from './render/sprites.js';
+import { toast } from './ui/toast.js';
+import { checkAch, grantBackUnlocks } from './ui/achievements.js';
 
 /* ================= STATE ================= */
-
-/* ================= TOAST ================= */
-function toast(msg, cls = '') {
-  const t = document.createElement('div');
-  t.className = 'toast ' + cls;
-  t.textContent = msg;
-  $('toasts').appendChild(t);
-  setTimeout(() => {
-    t.classList.add('out');
-    setTimeout(() => t.remove(), 450);
-  }, 2600);
-}
 
 /* ================= INPUT ================= */
 window.addEventListener('keydown', e => {
@@ -488,69 +478,6 @@ function updateHUD(dt) {
   }
   if (run.boss && run.boss.hp > 0)
     $('bossBarFill').style.width = clamp((run.boss.hp / run.boss.maxhp) * 100, 0, 100) + '%';
-}
-
-/* ================= ACHIEVEMENTS ================= */
-/* silent=true — выдача без тостов/звука со списком «что выдано» (экран окончания забега);
-   посреди забега ачивки не выдаются вообще: условия копятся, оформление — только по итогам */
-function checkAch(silent) {
-  const got = [],
-    UNL = {
-      char: 'АГЕНТ ОТКРЫТ',
-      stage: 'КАРТА ОТКРЫТА',
-      w: '⚙️ ОРУЖИЕ ОТКРЫТО',
-      p: '🧩 ПАССИВ ОТКРЫТ',
-      meta: 'МОДУЛЬ ОТКРЫТ',
-    },
-    LOW = { char: 'агент', stage: 'карта', w: 'оружие', p: 'пассив', meta: 'модуль' };
-  for (const a of ACH) {
-    if (save.ach[a.id]) continue;
-    let ok = false;
-    try {
-      ok = a.c(save.stats);
-    } catch (e) {}
-    if (ok) {
-      save.ach[a.id] = true;
-      save.coins += a.r;
-      save.stats.coins += a.r;
-      const unl = [];
-      for (const c of CHARS)
-        if (c.lockAch === a.id) {
-          save.chars[c.id] = true;
-          unl.push(['char', c.name]);
-        }
-      for (const s of STAGES)
-        if (s.unlockAch === a.id) {
-          save.stages[s.id] = true;
-          unl.push(['stage', s.name]);
-        }
-      for (const id in WEAPONS) if (WEAPONS[id].lockAch === a.id) unl.push(['w', WEAPONS[id].name]);
-      for (const id in PASSIVES) if (PASSIVES[id].lockAch === a.id) unl.push(['p', PASSIVES[id].name]);
-      if (META_ACH[a.id] && !save.meta[META_ACH[a.id]]) {
-        save.meta[META_ACH[a.id]] = 1;
-        unl.push(['meta', META_ACH_NAME[META_ACH[a.id]]]);
-      }
-      if (silent)
-        got.push({
-          name: a.name,
-          d: a.d,
-          r: a.r,
-          extra: unl.length ? ' → открыто: ' + unl.map(u => LOW[u[0]] + ' ' + u[1]).join(', ') : '',
-        });
-      else {
-        toast('🏆 ' + a.name + ' (+' + a.r + ')', 'amb');
-        sfx('chest');
-        for (const u of unl) toast(UNL[u[0]] + ': ' + u[1], 'amb');
-      }
-    }
-  }
-  saveGame();
-  return got;
-}
-function grantBackUnlocks() {
-  for (const c of CHARS) if (c.lockAch && save.ach[c.lockAch]) save.chars[c.id] = true;
-  for (const s of STAGES) if (s.unlockAch && save.ach[s.unlockAch]) save.stages[s.id] = true;
-  for (const id in META_ACH) if (save.ach[id]) save.meta[META_ACH[id]] = 1;
 }
 
 /* ================= SCREENS ================= */
