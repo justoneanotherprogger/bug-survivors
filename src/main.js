@@ -20,6 +20,7 @@ import { spawnBoss, director } from './run/director.js';
 import { wstats, lvDesc, updWeapons } from './combat/weapons.js';
 import { gridRebuild, updBullets, updateEnemies, updPools, updPickups, updFx } from './combat/world.js';
 import { cellH, pRack, pVent, pDesk, pMoon, pTape, pCard, pStars, pScan } from './render/scenes.js';
+import { ctx } from './render/context.js';
 import { charArtURL, stageArtURL, drawAgentArt } from './render/sprites.js';
 
 /* ================= STATE ================= */
@@ -489,19 +490,6 @@ function updateHUD(dt) {
   if (run.boss && run.boss.hp > 0)
     $('bossBarFill').style.width = clamp((run.boss.hp / run.boss.maxhp) * 100, 0, 100) + '%';
 }
-
-/* ================= CANVAS / RENDER ================= */
-const cv = $('game'),
-  ctx = cv.getContext('2d');
-function resize() {
-  S.dpr = Math.min(2, window.devicePixelRatio || 1);
-  S.W = innerWidth;
-  S.H = innerHeight;
-  cv.width = S.W * S.dpr;
-  cv.height = S.H * S.dpr;
-}
-window.addEventListener('resize', resize);
-resize();
 
 function render() {
   ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
