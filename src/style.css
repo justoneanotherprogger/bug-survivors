@@ -36,6 +36,7 @@ body {
   inset: 0;
   display: block;
   z-index: 1;
+  touch-action: none;
 }
 /* ===== CRT overlay ===== */
 body::before {
@@ -577,6 +578,30 @@ h2.h.amb {
   z-index: 10;
   pointer-events: none;
 }
+#pauseBtn {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  right: calc(10px + env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 18px;
+  color: var(--grn);
+  background: rgba(7, 20, 12, 0.85);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+#pauseBtn:hover {
+  filter: brightness(1.4);
+}
 #xpbarWrap {
   position: absolute;
   top: 0;
@@ -614,7 +639,7 @@ h2.h.amb {
 }
 #hudStats {
   position: absolute;
-  top: 20px;
+  top: 58px;
   right: 14px;
   display: flex;
   flex-direction: column;
@@ -663,6 +688,7 @@ h2.h.amb {
   flex-direction: column;
   gap: 6px;
   pointer-events: auto;
+  touch-action: manipulation;
 }
 .iconRow {
   display: flex;

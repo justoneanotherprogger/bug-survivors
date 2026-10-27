@@ -61,7 +61,13 @@ window.addEventListener(
   'pointerdown',
   e => {
     if (S.appState !== 'run') return;
-    if (e.target.closest('button') || e.target.closest('.modal') || e.target.closest('.screen')) return;
+    if (
+      e.target.closest('button') ||
+      e.target.closest('.modal') ||
+      e.target.closest('.screen') ||
+      e.target.closest('#hudIcons')
+    )
+      return;
     joy.on = true;
     joy.id = e.pointerId;
     joy.bx = e.clientX;
@@ -488,6 +494,10 @@ function updateHUD(dt) {
 }
 
 /* ================= BUTTONS ================= */
+$('pauseBtn').onclick = () => {
+  sfx('click');
+  pauseGame();
+};
 $('btnPlay').onclick = () => {
   sfx('click');
   openScreen('chars');
