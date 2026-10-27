@@ -591,16 +591,32 @@ h2.h.amb {
   font: inherit;
   font-size: 18px;
   color: var(--grn);
-  background: rgba(7, 20, 12, 0.85);
-  border: 1px solid var(--line2);
+  background: rgba(56, 224, 127, 0.14);
+  border: 1px solid rgba(56, 224, 127, 0.55);
   border-radius: 4px;
+  box-shadow: 0 0 8px rgba(56, 224, 127, 0.25);
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    box-shadow 0.12s;
 }
 
-#pauseBtn:hover {
-  filter: brightness(1.4);
+#pauseBtn:hover,
+#pauseBtn:focus-visible {
+  color: #04150a;
+  background: var(--grn);
+  border-color: var(--grn);
+  box-shadow: 0 0 14px rgba(56, 224, 127, 0.6);
+}
+
+#pauseBtn:active {
+  color: #04150a;
+  background: var(--grn2);
+  border-color: var(--grn2);
+  box-shadow: 0 0 6px rgba(163, 230, 53, 0.5);
 }
 #xpbarWrap {
   position: absolute;
