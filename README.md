@@ -1,20 +1,15 @@
 # bug-survivors
 
-vibe-coded in 2 days
+Аркадный выживач в духе Vampire Survivors: агент эпохи отбивается от багов, прокачивается и собирает оружие, названное в честь инструментов разработчика. Забег идёт около получаса и заканчивается боем с финальным боссом.
 
-## Запуск
+- 17 героев — от перфокарты до АГИ
+- 16 оружий с эволюциями и 13 пассивок
+- 3 карты, боссы каждые пять минут, бесконечный режим после победы
+- между забегами: монеты, магазин, кодекс, достижения
+- ванильный JS и Canvas, сборка на Vite
 
-npm install
-npm run dev
+Играть: https://justoneanotherprogger.github.io/bug-survivors/
 
-## Сборка
+Управление: WASD или стрелки, пауза — Esc. На телефоне — виртуальный джойстик и кнопка паузы.
 
-npm run build
-npm run preview
-
-## Проверки
-
-npm run lint
-npm run format:check
-
-https://justoneanotherprogger.github.io/bug-survivors/
+Разработка: `npm install`, `npm run dev`, `npm run build`; проверки — `npm run lint` и `npm run format:check`.
