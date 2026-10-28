@@ -1,0 +1,49 @@
+@media (max-width: 640px) {
+  #hudTimer {
+    font-size: 24px;
+    top: 14px;
+  }
+  .lcard {
+    width: calc(50% - 10px);
+    min-width: 150px;
+  }
+  .card {
+    width: calc(50% - 8px);
+    min-width: 150px;
+  }
+  #shopGrid,
+  #achGrid,
+  #codexGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #shopGrid .card,
+  #achGrid .card,
+  #codexGrid .card {
+    width: 100%;
+    min-width: 0;
+  }
+  #hpbarWrap {
+    width: 150px;
+  }
+  .iconRow {
+    max-width: 95vw;
+  }
+  /* мобайл: кластер из 3 блоков не влезает в строку — назад/монеты по краям, описание ниже */
+  .sbRow {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    row-gap: 4px;
+    column-gap: 10px;
+  }
+  .sbRow > :first-child {
+    order: 1;
+  }
+  .sbRow > :last-child {
+    order: 2;
+  }
+  .sbTitle {
+    order: 3;
+    flex: 1 1 100%;
+  }
+}

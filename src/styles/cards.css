@@ -1,0 +1,218 @@
+/* ===== grids of cards ===== */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  width: 100%;
+  max-width: 980px;
+}
+.card {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  padding: 14px;
+  width: 200px;
+  cursor: pointer;
+  transition: all 0.12s;
+  position: relative;
+}
+.card:hover {
+  border-color: var(--grn);
+  transform: translateY(-3px);
+  box-shadow: 0 0 16px rgba(56, 224, 127, 0.25);
+}
+.card.sel {
+  border-color: var(--grn);
+  box-shadow:
+    0 0 0 1px var(--grn),
+    0 0 20px rgba(56, 224, 127, 0.4);
+}
+.card.lock {
+  opacity: 0.45;
+  cursor: default;
+}
+.card.lock:hover {
+  transform: none;
+  border-color: var(--line2);
+  box-shadow: none;
+}
+.card .face {
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.card .faceImg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
+  display: block;
+}
+.miniFace {
+  width: 19px;
+  height: 19px;
+  vertical-align: -5px;
+  margin-right: 3px;
+  border: 1px solid var(--line2);
+  background: #0b140d;
+}
+.card .nm {
+  color: var(--grn);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+.card .ds {
+  color: var(--mut);
+  font-size: 11.5px;
+  line-height: 1.5;
+  min-height: 34px;
+}
+.card .cost {
+  margin-top: 8px;
+  color: var(--amb);
+  font-size: 12px;
+}
+.card .lockd {
+  margin-top: 8px;
+  color: var(--red);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.card .own {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--grn2);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+/* превью-сцена карты на карточке выбора */
+.card .stageImg {
+  width: 100%;
+  height: 118px;
+  display: block;
+  margin-bottom: 9px;
+  border: 1px solid var(--line2);
+  object-fit: cover;
+  background: #020604;
+}
+.card .era {
+  color: var(--mut);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: -2px 0 7px;
+}
+.card .wnm {
+  color: var(--txt);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.pips {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.pip {
+  width: 8px;
+  height: 8px;
+  background: #12301d;
+  border: 1px solid var(--line2);
+}
+.pip.on {
+  background: var(--grn);
+  box-shadow: 0 0 4px rgba(56, 224, 127, 0.7);
+}
+.pip.gold {
+  background: var(--amb);
+  box-shadow: 0 0 4px rgba(251, 191, 36, 0.8);
+}
+/* levelup cards */
+.cards {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.lcard {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  padding: 16px 14px;
+  width: 200px;
+  cursor: pointer;
+  transition: all 0.12s;
+  position: relative;
+  text-align: center;
+}
+.lcard:hover {
+  border-color: var(--grn);
+  transform: translateY(-4px);
+  box-shadow: 0 0 22px rgba(56, 224, 127, 0.35);
+}
+.lcard .cIcon {
+  font-size: 42px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+.lcard .cName {
+  color: var(--grn);
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.lcard .cTag {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  margin-bottom: 8px;
+}
+.tNew {
+  color: var(--grn2);
+}
+.tUp {
+  color: var(--mut);
+}
+.tEvo {
+  color: var(--amb);
+  animation: evoPulse 1s infinite;
+}
+@keyframes evoPulse {
+  50% {
+    text-shadow: 0 0 12px rgba(251, 191, 36, 0.9);
+  }
+}
+.lcard .cDesc {
+  color: var(--mut);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.lcard .cKey {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  color: #2c5c3f;
+  font-size: 11px;
+}
+/* строка автовыбора модов в окне повышения уровня */
+.lvlAuto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--mut);
+}
+.lvlAutoHint {
+  color: #4f7a61;
+  font-size: 10.5px;
+  margin-top: 6px;
+  letter-spacing: 0.05em;
+}
+.lvlAuto.hidden,
+.lvlAutoHint.hidden {
+  display: none;
+}
